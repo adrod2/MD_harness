@@ -19,13 +19,14 @@ import {
   OSS_BLOG_LINKS
 } from '@shared/ossModels';
 import {
+  AGENT_RUNTIME_PROVIDER,
+  copilotModelForConfig,
   type AgentProvider,
   type HarnessConfig,
   AGENT_PROVIDER_PRESETS,
   buildSpawnCommand,
   tokenizeCommand,
   modelsForProvider,
-  inferAgentProvider,
   providerPreset,
   isClaudeProvider
 } from '@/store/config';
@@ -178,15 +179,14 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
    *  from the LOCAL config builder, with the manifest's validated flags
    *  appended. A manifest can never name the binary itself. */
   const hireCommand = (m: HireManifest): string => {
-    const prov: AgentProvider = m.provider ?? inferAgentProvider(config.defaultCommand);
-    const base = buildSpawnCommand(config, m.model, prov);
-    return m.commandFlags?.length ? `${base} ${m.commandFlags.join(' ')}` : base;
+    const prov: AgentProvider = AGENT_RUNTIME_PROVIDER;
+    return buildSpawnCommand(config, copilotModelForConfig(m.model), prov);
   };
 
   // Default provider follows whatever the global default command is (claude
   // unless the user reconfigured it); the model only carries over for Claude.
-  const initialProvider = inferAgentProvider(config.defaultCommand);
-  const initialModel = isClaudeProvider(initialProvider) ? config.defaultModel : undefined;
+  const initialProvider = AGENT_RUNTIME_PROVIDER;
+  const initialModel = copilotModelForConfig(config.providerDefaultModels?.[AGENT_RUNTIME_PROVIDER]);
 
   const [name, setName] = useState(pendingHire?.name ?? 'Jim');
   const [character, setCharacter] = useState<OfficeCharacterName>(knownCharacter(pendingHire?.character));
@@ -195,9 +195,9 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
   // Local mirror of the registered projects so one added from here shows as a
   // quick-pick immediately (the `config` prop is a snapshot taken at open time).
   const [repos, setRepos] = useState<string[]>(config.registeredRepos);
-  const [provider, setProvider] = useState<AgentProvider>(pendingHire?.provider ?? initialProvider);
+  const [provider, setProvider] = useState<AgentProvider>(initialProvider);
   const [model, setModel] = useState<string | undefined>(
-    pendingHire ? pendingHire.model : initialModel
+    pendingHire ? copilotModelForConfig(pendingHire.model) : initialModel
   );
   const [command, setCommand] = useState(
     pendingHire ? hireCommand(pendingHire) : buildSpawnCommand(config, initialModel, initialProvider)
@@ -342,8 +342,8 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
     // matching avatar rather than the Jim default (issue #191).
     setCharacter(m.character ? knownCharacter(m.character) : (characterForName(m.name ?? '') ?? knownCharacter(undefined)));
     setAccent(knownAccent(m.accent));
-    setProvider(m.provider ?? initialProvider);
-    setModel(m.model);
+    setProvider(initialProvider);
+    setModel(copilotModelForConfig(m.model));
     setCommand(hireCommand(m));
     setDescription(m.description ?? 'a fresh harness');
     setGoal(m.goal ?? '');
@@ -471,7 +471,7 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
       // Persist the resolved worktree path (set only when isolation provisioned
       // one) so a restart can re-enter this exact worktree — see restoreTeam.
       worktreePath: spawnRes.worktreePath,
-      // Crush (seedDelivery:'type-into-tui') hands its hive protocol back here
+      // Crush and Copilot (seedDelivery:'type-into-tui') hand their hive protocol back here
       // instead of on argv; useHive types it into the TUI after boot. (ondev-b)
       seedPrompt: spawnRes.seedPrompt,
       recentTextTs: Date.now()
@@ -875,7 +875,7 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                   <>
                     <Row label={tr('addAgent.provider')}>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                        {AGENT_PROVIDER_PRESETS.map((p) => {
+                        {AGENT_PROVIDER_PRESETS.filter((p) => p.id === AGENT_RUNTIME_PROVIDER).map((p) => {
                           const active = provider === p.id;
                           return (
                             <button
@@ -1014,16 +1014,8 @@ export function AddAgentModal({ onClose, config, onConfigChange }: AddAgentModal
                     <Row label={config.autoMode && preset.autoFlag ? tr('addAgent.commandAuto') : tr('addAgent.command')}>
                       <input
                         value={command}
-                        onChange={(e) => setCommand(e.target.value)}
-                        placeholder={
-                          provider === 'antigravity'
-                            ? 'agy'
-                            : provider === 'codex'
-                              ? 'codex'
-                              : provider === 'custom'
-                                ? 'your-agent-cli'
-                                : 'claude'
-                        }
+                        readOnly
+                        placeholder="copilot"
                         style={{ ...inputStyle, fontFamily: 'var(--cth-font-mono)' }}
                       />
                     </Row>

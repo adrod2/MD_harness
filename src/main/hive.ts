@@ -192,7 +192,7 @@ export interface SpawnInjection {
   args: string[];
   env: Record<string, string>;
   /** The hive-protocol seed to TYPE into the TUI after boot rather than pass on
-   *  argv — set only for `seedDelivery:'type-into-tui'` providers (Crush), whose
+   *  argv — set only for `seedDelivery:'type-into-tui'` providers (Crush, Copilot), whose
    *  bare TUI rejects a positional seed. The renderer types it through the same
    *  per-pty write-chain as the inbox-wake nudge. (ondev-b) */
   seedPrompt?: string;

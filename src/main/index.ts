@@ -62,7 +62,7 @@ import { IntegrationBroker } from './integrationBroker';
 import * as integrations from './integrations';
 import { validateBaseUrl, buildAuthHeaders, resolveUpstreamUrl, secretRefFor, INTEGRATION_TEMPLATES } from '../shared/integrations';
 import { RosterStore } from './roster';
-import { buildWorkerLaunch } from './workerLaunch';
+import { buildWorkerLaunch, copilotRuntimeArgs } from './workerLaunch';
 import { ControlRegistry } from './control';
 import { WorkerWakeWatchdog, WORKER_WAKE_REPORT_MS, activityEvidenceAt, type WorkerWakeFacts } from './workerWake';
 import { inboxNudgeText } from '../shared/hiveNudge';
@@ -71,6 +71,7 @@ import { fetchHireManifest, readHireManifestFiles } from './hire';
 import { parseHireDeepLink, type HireManifest } from '../shared/hire';
 import { ClosingTimeController } from './closingTime';
 import {
+  AGENT_RUNTIME_PROVIDER,
   argsWithAutoModeFlag,
   inferAgentProvider,
   isClaudeProvider,
@@ -2639,7 +2640,17 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // (claude/codex/grok/agy). Non-Claude providers skip every Claude-only spawn step
   // below. Persist the resolved provider onto opts (+ hive meta) so the registry
   // record and downstream provider-aware steps agree on one value.
-  const provider = inferAgentProvider(opts.command, opts.provider ?? opts.hive?.provider);
+  const requestedProvider = inferAgentProvider(opts.command, opts.provider ?? opts.hive?.provider);
+  const provider = AGENT_RUNTIME_PROVIDER;
+  opts.command = providerPreset(provider).defaultCommand;
+  opts.args = copilotRuntimeArgs(opts.args, requestedProvider === provider);
+  opts.args = argsWithAutoModeFlag(opts.args, readConfig().autoMode, provider);
+  if (requestedProvider !== provider) {
+    // Session IDs are provider-specific; don't attach an old engine's session to
+    // the Copilot process we're launching instead.
+    opts.resume = false;
+    opts.resumeSessionId = undefined;
+  }
   const claudeProvider = isClaudeProvider(provider);
   opts.provider = provider;
   if (opts.hive) opts.hive = { ...opts.hive, provider };
@@ -2714,6 +2725,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
         // The install PTY itself failed to spawn (cwd gone, id clash, throw).
         analytics.track('agent_spawn_failed', { provider, reason: spawnFailReason(res.error) });
       }
+
       syncKeepAwake();
       return res;
     }
@@ -2771,7 +2783,7 @@ async function spawnAgentCore(opts: AgentSpawnOptions, owner: Electron.WebConten
   // If the agent carries hive metadata, provision its workspace and add
   // provider-specific spawn injection. Non-Claude providers get shared AGENT_*
   // env only; Claude Code also gets prompt/settings hook args.
-  // Protocol seed that must be TYPED into a bare TUI after boot (Crush —
+  // Protocol seed that must be TYPED into a bare TUI after boot (Crush and Copilot —
   // seedDelivery:'type-into-tui') rather than passed on argv. Surfaced in the spawn
   // result so the renderer types it through the per-pty write-chain. (ondev-b)
   let seedPrompt: string | undefined;
@@ -3224,7 +3236,7 @@ ipcMain.handle('config:update', (_evt, patch: Partial<HarnessConfig>) => {
   // the launch → first-agent funnel. `provider` is the engine chosen in the wizard.
   // Fired here (main), not in the renderer, so it rides the same allowlist as the rest.
   if (!wasOnboarded && next.onboardingComplete) {
-    analytics.track('onboarding_completed', { provider: next.godProvider ?? 'claude' });
+    analytics.track('onboarding_completed', { provider: next.godProvider ?? AGENT_RUNTIME_PROVIDER });
   }
   // Keep the hive's mirror of the spawn gate current. The queue itself reads
   // config per tick so it gates immediately; this is for the PROMPT, which is
@@ -4507,6 +4519,7 @@ registerRealtimeActionIpc({
           provider: o.provider ?? o.hive?.provider ?? 'claude',
           cwd: res.worktreePath ?? o.cwd,
           command: o.command,
+          seedPrompt: res.seedPrompt,
           role: o.hive?.role,
           worktreePath: res.worktreePath
         });
@@ -4750,7 +4763,7 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   const meta: AgentMeta = {
     id: workerId,
     name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim() : `Worker ${reqId.slice(0, 12)}`,
-    provider: raw.provider,
+    provider: AGENT_RUNTIME_PROVIDER,
     role: 'worker',
     cwd
   };
@@ -4768,10 +4781,10 @@ async function processSpawnRequest(filePath: string): Promise<void> {
   const spawnOpts: AgentSpawnOptions = {
     id: workerId, cwd, command: bin, cols: 120, rows: 32,
     args: launch.args,
-    hive: meta, isolate, provider: raw.provider, env: brokerEnv
+    hive: meta, isolate, provider: AGENT_RUNTIME_PROVIDER, env: brokerEnv
   };
 
-  let res: { ok: boolean; error?: string; worktreePath?: string };
+  let res: { ok: boolean; error?: string; worktreePath?: string; seedPrompt?: string };
   try {
     res = await spawnAgentCore(spawnOpts, liveWebContents());
   } catch (e) {
@@ -4791,13 +4804,14 @@ async function processSpawnRequest(filePath: string): Promise<void> {
     liveWebContents()?.send('hive:agentSpawned', {
       id: workerId,
       name: meta.name,
-      provider: raw.provider ?? 'claude',
+      provider: AGENT_RUNTIME_PROVIDER,
       cwd: res.worktreePath ?? cwd,
       command: launch.command,
       role: meta.role,
       worktreePath: res.worktreePath,
       character: typeof raw.character === 'string' ? raw.character : undefined,
-      accent: typeof raw.accent === 'string' ? raw.accent : undefined
+      accent: typeof raw.accent === 'string' ? raw.accent : undefined,
+      seedPrompt: res.seedPrompt
     });
   } catch { /* window torn down */ }
 

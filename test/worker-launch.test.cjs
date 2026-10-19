@@ -12,45 +12,67 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const loadTs = require('./load-ts.cjs');
 
-const { buildWorkerLaunch } = loadTs('src/main/workerLaunch.ts');
+const { buildWorkerLaunch, copilotRuntimeArgs } = loadTs('src/main/workerLaunch.ts');
 const { tokenizeCommand } = loadTs('src/shared/commandLine.ts');
 
 const launch = (over = {}) => buildWorkerLaunch({ autoMode: false, ...over });
 
-test('a bare command spawns as itself, no argv', () => {
+test('every worker runs Copilot CLI, regardless of configured engine', () => {
   const l = launch({ requestCommand: 'claude' });
-  assert.equal(l.bin, 'claude');
+  assert.equal(l.bin, 'copilot');
   assert.deepEqual(l.args, []);
 });
 
-test('a flag-carrying command line splits into executable + argv', () => {
+test('provider-specific command flags are not passed to Copilot', () => {
   const l = launch({ requestCommand: 'claude --permission-mode plan --verbose' });
-  assert.equal(l.bin, 'claude');
-  assert.deepEqual(l.args, ['--permission-mode', 'plan', '--verbose']);
+  assert.equal(l.bin, 'copilot');
+  assert.deepEqual(l.args, []);
 });
 
-test('a quoted model value with spaces stays one token', () => {
+test('runtime strips foreign flags and only keeps compatible Copilot options', () => {
+  assert.deepEqual(
+    copilotRuntimeArgs(
+      ['--permission-mode', 'plan', '--model', 'gpt-5.4', '--resume', 'session-1', '--allow-all-tools'],
+      true
+    ),
+    ['--model', 'gpt-5.4', '--resume', 'session-1', '--allow-all-tools']
+  );
+  assert.deepEqual(copilotRuntimeArgs(['--model', 'claude-fable-5'], false), []);
+});
+
+test('provider-specific models are not passed to Copilot', () => {
   const l = launch({ requestCommand: 'agy --model "Gemini 3.1 Pro (High)"' });
-  assert.equal(l.bin, 'agy');
-  assert.deepEqual(l.args, ['--model', 'Gemini 3.1 Pro (High)']);
+  assert.equal(l.bin, 'copilot');
+  assert.deepEqual(l.args, []);
 });
 
-test('the separate model field applies only when the line did not pick a model', () => {
-  const applied = launch({ requestCommand: 'claude', requestModel: 'opus' });
-  assert.deepEqual(applied.args, ['--model', 'opus']);
-  const deduped = launch({ requestCommand: 'claude --model sonnet', requestModel: 'opus' });
-  assert.deepEqual(deduped.args, ['--model', 'sonnet'], 'the command line wins over raw.model');
+test('Copilot commands retain their model and the separate model field fills it when absent', () => {
+  const applied = launch({ requestCommand: 'copilot', requestProvider: 'copilot', requestModel: 'gpt-5.4' });
+  assert.deepEqual(applied.args, ['--model', 'gpt-5.4']);
+  const deduped = launch({
+    requestCommand: 'copilot --model claude-sonnet-4.5',
+    requestProvider: 'copilot',
+    requestModel: 'gpt-5.4'
+  });
+  assert.deepEqual(deduped.args, ['--model', 'claude-sonnet-4.5'], 'the command line wins over raw.model');
 });
 
-test('auto-mode ON appends bypassPermissions for a claude worker with no stance', () => {
+test('auto-mode enables unattended Copilot tools without print mode', () => {
   const l = launch({ requestCommand: 'claude', autoMode: true });
-  assert.deepEqual(l.args, ['--permission-mode', 'bypassPermissions']);
-  assert.ok(l.command.includes('--permission-mode bypassPermissions'));
+  assert.equal(l.bin, 'copilot');
+  assert.deepEqual(l.args, ['--allow-all-tools', '--no-ask-user']);
+  assert.ok(!l.args.includes('-p'));
 });
 
-test('an explicit --permission-mode in the request always wins over auto-mode', () => {
+test('foreign permission stances are discarded, while Copilot options are retained', () => {
   const l = launch({ requestCommand: 'claude --permission-mode plan', autoMode: true });
-  assert.deepEqual(l.args, ['--permission-mode', 'plan']);
+  assert.deepEqual(l.args, ['--allow-all-tools', '--no-ask-user']);
+  const copilot = launch({
+    requestCommand: 'copilot --allow-all-tools --no-ask-user',
+    requestProvider: 'copilot',
+    autoMode: true
+  });
+  assert.deepEqual(copilot.args, ['--allow-all-tools', '--no-ask-user']);
 });
 
 test('auto-mode OFF appends nothing', () => {
@@ -58,66 +80,20 @@ test('auto-mode OFF appends nothing', () => {
   assert.deepEqual(launch({ requestCommand: 'codex', autoMode: false }).args, []);
 });
 
-test("auto-mode appends the PROVIDER'S flag, not claude's", () => {
-  // A codex worker given --permission-mode would still stall at its first ask;
-  // each provider's preset knows its own flag, same as the renderer's spawn path.
-  const codex = launch({ requestCommand: 'codex', autoMode: true });
-  assert.deepEqual(codex.args, ['-a', 'never', '-s', 'workspace-write']);
-  const agy = launch({ requestCommand: 'agy', autoMode: true });
-  assert.deepEqual(agy.args, ['--dangerously-skip-permissions']);
-  const kimi = launch({ requestCommand: 'kimi', autoMode: true });
-  assert.deepEqual(kimi.args, ['--auto']);
-});
-
-test('an explicit stance wins for non-claude providers too (no doubled flag)', () => {
-  const l = launch({
-    requestCommand: 'codex --dangerously-bypass-approvals-and-sandbox',
-    autoMode: true
-  });
-  assert.deepEqual(l.args, ['--dangerously-bypass-approvals-and-sandbox']);
-});
-
-test('a provider whose preset declares no auto flag gets nothing appended', () => {
-  assert.deepEqual(launch({ requestCommand: 'opencode', autoMode: true }).args, []);
-  assert.deepEqual(launch({ requestCommand: 'my-own-tool', autoMode: true }).args, []);
-});
-
-test('a multi-token auto flag appends whole, and the stance check is by token', () => {
-  // copilot's flag starts with `-s`; a substring check would read the `-s` inside
-  // --summarize as an explicit stance and skip the append.
-  const l = launch({ requestCommand: 'copilot --summarize', autoMode: true });
-  assert.deepEqual(l.args, ['--summarize', '-s', '--allow-all-tools', '--no-ask-user']);
-});
-
-test("an explicit request provider picks that provider's flag for a custom binary", () => {
-  const l = launch({ requestCommand: 'my-codex-wrapper', requestProvider: 'codex', autoMode: true });
-  assert.equal(l.bin, 'my-codex-wrapper');
-  assert.deepEqual(l.args, ['-a', 'never', '-s', 'workspace-write']);
-});
-
-test('a missing command resolves from an explicit provider before the configured default', () => {
-  const l = launch({ requestProvider: 'codex', defaultCommand: 'claude', autoMode: true });
-  assert.equal(l.bin, 'codex');
-  assert.deepEqual(l.args, ['-a', 'never', '-s', 'workspace-write']);
-});
-
-test('provider-only resolution honors providers whose auto-mode stance is config-based', () => {
-  const l = launch({ requestProvider: 'opencode', defaultCommand: 'claude', autoMode: true });
-  assert.equal(l.bin, 'opencode');
-  assert.deepEqual(l.args, []);
-});
-
-test('custom and invalid providers preserve the configured command fallback', () => {
+test('custom and invalid providers cannot override the Copilot runtime', () => {
   const custom = launch({ requestProvider: 'custom', defaultCommand: 'company-agent', autoMode: true });
-  assert.equal(custom.bin, 'company-agent');
-  assert.deepEqual(custom.args, []);
-
-  assert.equal(launch({ requestProvider: null, defaultCommand: 'opencode' }).bin, 'opencode');
+  assert.equal(custom.bin, 'copilot');
+  assert.deepEqual(custom.args, ['--allow-all-tools', '--no-ask-user']);
+  assert.equal(launch({ requestProvider: null, defaultCommand: 'opencode' }).bin, 'copilot');
 });
 
-test('a missing command falls back to the default, then to claude', () => {
-  assert.equal(launch({ defaultCommand: 'codex --full-auto' }).bin, 'codex');
-  assert.equal(launch({}).bin, 'claude');
+test('a missing command still resolves to Copilot, and compatible Copilot flags survive', () => {
+  assert.equal(launch({ defaultCommand: 'codex --full-auto' }).bin, 'copilot');
+  assert.equal(launch({}).bin, 'copilot');
+  assert.deepEqual(
+    launch({ requestCommand: 'copilot --model gpt-5.4 -p ignored', requestProvider: 'copilot' }).args,
+    ['--model', 'gpt-5.4']
+  );
 });
 
 test('main and renderer split with the SAME tokenizer (shared module)', () => {

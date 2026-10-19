@@ -5,7 +5,13 @@ import { PixelButton } from './PixelButton';
 import { Icon, type IconName } from './Icon';
 import { SpritePortrait } from './SpritePortrait';
 import { ProviderLogo } from './ProviderLogo';
-import { modelsForProvider, onboardingEngineChoices, type AgentProvider, type HarnessConfig } from '@/store/config';
+import {
+  AGENT_RUNTIME_PROVIDER,
+  modelsForProvider,
+  onboardingEngineChoices,
+  type AgentProvider,
+  type HarnessConfig
+} from '@/store/config';
 import { providerPreset } from '@shared/agentProvider';
 import {
   classifyEngineAvailability, engineAvailabilityBadge, engineAvailabilityMessage, engineBlocksOnboarding
@@ -103,9 +109,9 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   // Anonymous usage stats (TELEMETRY.md). Default ON (opt-out); persisted by
   // finish() so unchecking before finishing means nothing is ever sent.
   const [shareStats, setShareStats] = useState<boolean>(true);
-  const [godProvider, setGodProvider] = useState<AgentProvider>('claude');
+  const [godProvider, setGodProvider] = useState<AgentProvider>(AGENT_RUNTIME_PROVIDER);
   const [godModel, setGodModel] = useState<string | undefined>(
-    providerPreset('claude').recommendedOrchestratorModel
+    providerPreset(AGENT_RUNTIME_PROVIDER).recommendedOrchestratorModel
   );
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
@@ -405,20 +411,14 @@ export function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
                     {plain ? (
                       <Trans i18nKey="onboarding.orchestrator.cliAgentPlain" components={{ strong: <strong /> }}>
                         A <strong>CLI agent</strong> is an AI coding assistant that runs on your
-                        computer — popular ones are Claude Code (Anthropic), Codex (OpenAI) and
-                        Antigravity (Google Gemini). <strong>Your clone</strong> is the always-on
-                        one that runs your whole office. We recommend Claude Code on Opus 4.8 (1M).
-                        You can add or switch the others later.
+                        computer. Every agent in this office uses GitHub Copilot CLI.
+                        <strong> Your clone</strong> is the always-on one that runs your whole office.
                       </Trans>
                     ) : (
                       <Trans i18nKey="onboarding.orchestrator.cliAgent" components={{ strong: <strong /> }}>
-                        Each option is a <strong>CLI engine</strong> (Claude Code, Codex,
-                        Antigravity/Gemini, or a local proxy like Qwen). Engines marked
-                        INSTALLED are already on this machine; INSTALLS ON FIRST RUN means the app
-                        sets it up when Michael first starts.
-                        <strong> Your clone</strong> (Michael) is the engine that orchestrates the whole
-                        hive. Recommended: Claude Code · Opus 4.8 · 1M. Other providers can be wired
-                        per agent later.
+                        Every agent runs through the <strong>GitHub Copilot CLI</strong>.
+                        The app checks whether it is installed and can install it when Michael first
+                        starts. <strong>Your clone</strong> (Michael) orchestrates the whole hive.
                       </Trans>
                     )}
                   </span>

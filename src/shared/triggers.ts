@@ -97,7 +97,7 @@ export interface ContextRule {
    *
    * For `clear`: a literal command that OVERRIDES the provider's own clear verb.
    * That override doubles as the escape hatch for providers we deliberately map to
-   * nothing — Crush (palette-only), Copilot (print mode), and custom binaries —
+   * nothing — Crush (palette-only), and custom binaries —
    * where the operator knows their CLI and we don't.
    *
    * Empty string = send the provider's bare command.

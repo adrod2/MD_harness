@@ -18,11 +18,8 @@ subscriptions you already pay for, on their hourly limits. It turns the terminal
 you already run into a clone of you, one that keeps working while you're away and
 coordinates a whole office of agents on your own machine.
 
-Wraps [Claude Code](https://claude.com/claude-code), Antigravity (Gemini), OpenAI Codex,
-**xAI Grok**, **Kimi Code**, **Gemini CLI**, **Qwen**, **OpenCode**, **Crush**,
-**pi.dev**, **GitHub Copilot CLI**, and **Cursor**, with bring-your-own keys and local LLMs.
-Agents that message, route, and remember, coordinated by **your clone** (Michael) and
-visualized as avatars at work on a shared office floor.
+Every agent runs through [GitHub Copilot CLI](https://docs.github.com/copilot/concepts/agents/about-copilot-cli),
+coordinated by **your clone** (Michael) and visualized as avatars at work on a shared office floor.
 
 <p>
   <em>Electron · React · TypeScript · Pixi.js · xterm.js · node-pty</em>
@@ -69,8 +66,7 @@ year. <a href="https://app.harnessmd.com/console/license">Get Pro</a></sub>
 
 > [!NOTE]
 > **The world's best agents. The world's worst paper company.**
-> Munder Difflin takes the terminal-agent CLIs you already run (`claude`, `agy`, `codex`, `grok`,
-> `kimi`, `qwen`, `opencode`, `crush`, `pi`, and `copilot`) and turns them
+> Munder Difflin runs every agent through GitHub Copilot CLI and turns them
 > into a self-coordinating team: each agent gets long-term memory, a mailbox, and a desk on a 2D
 > office floor, and **your clone** (Michael) routes work between them while you watch. He's the
 > boss of the floor; you're still the boss of him.
@@ -91,24 +87,11 @@ year. <a href="https://app.harnessmd.com/console/license">Get Pro</a></sub>
 
 ## Supported agents
 
-**Bring the CLI you already pay for.** Every one of these runs as a real process in its own
-terminal, with your existing subscription and its hourly limits. If it runs in a terminal, it
-can run here.
+**Every agent uses GitHub Copilot CLI.** Michael and each hired worker run as interactive Copilot
+CLI sessions in their own terminal, so hive messages and ongoing tasks remain available.
 
 <p>
-  <a href="https://docs.claude.com/en/docs/claude-code"><kbd>Claude Code</kbd></a>
-  <a href="https://github.com/openai/codex"><kbd>Codex · GPT</kbd></a>
-  <a href="https://x.ai/cli"><kbd>Grok · xAI</kbd></a>
-  <a href="https://www.kimi.com/code"><kbd>Kimi Code</kbd></a>
-  <a href="https://github.com/google-gemini/gemini-cli"><kbd>Gemini CLI</kbd></a>
-  <a href="https://antigravity.google/docs/cli-overview"><kbd>Antigravity · Gemini</kbd></a>
-  <a href="https://github.com/QwenLM/qwen-code"><kbd>Qwen</kbd></a>
-  <a href="https://opencode.ai/docs"><kbd>OpenCode</kbd></a>
-  <a href="https://github.com/charmbracelet/crush"><kbd>Crush · Charm</kbd></a>
-  <a href="https://pi.dev/docs/latest"><kbd>Pi</kbd></a>
   <a href="https://docs.github.com/copilot/concepts/agents/about-copilot-cli"><kbd>GitHub Copilot</kbd></a>
-  <a href="https://cursor.com/docs/cli/install"><kbd>Cursor</kbd></a>
-  <kbd>+ any custom command</kbd>
 </p>
 
 Plus **bring your own keys** and **local models** through Ollama, LM Studio or vLLM.
@@ -120,8 +103,8 @@ wires them into a **hive mind**, and puts **your clone** in charge. Michael is t
 talk to in order to get things done. Under the hood it runs the **fastest memory layer in the
 world** so every agent remembers what it learns and recalls it instantly.
 
-- **Every terminal is an agent.** Each `claude`, `agy`, `codex`, `grok`, `kimi`, `qwen`, `opencode`, `crush`, `pi`, `copilot`, or custom session runs as a real
-  process in a pseudo-terminal (`node-pty`), byte-for-byte authentic, rendered with xterm.js.
+- **Every terminal is a Copilot agent.** Each session runs GitHub Copilot CLI as a real process in a
+  pseudo-terminal (`node-pty`), rendered with xterm.js.
 - **Every agent is an avatar.** Sessions appear as characters on a Pixi.js office floor. They walk
   to stations as they work, and envelopes fly desk-to-desk when they message each other.
 - **The hive coordinates them.** Agents read their memory and drain a mailbox; the router moves
@@ -284,7 +267,7 @@ than sending you to a docs page.
 </table>
 
 **The floor**
-- **Every terminal is a real agent.** Claude Code, Antigravity (Gemini), OpenAI Codex, xAI Grok, Kimi Code, Gemini CLI, Qwen, OpenCode, Crush, pi.dev, GitHub Copilot CLI, Cursor, or a custom command, each in its own `node-pty` PTY, rendered with xterm.js.
+- **Every terminal is a real agent.** GitHub Copilot CLI runs in its own `node-pty` PTY, rendered with xterm.js.
 - **Every agent is an avatar.** A Pixi.js office floor where agents walk to stations, envelopes fly desk to desk, and avatar state reflects real work.
 - **A GOD orchestrator you talk to.** It routes tasks, adjudicates traffic, and escalates only what needs a human. Or press **Talk** and run the floor by voice.
 - **Per-agent git worktrees.** Optional isolation so parallel agents never collide on branches.
@@ -413,8 +396,8 @@ open it, and the wizard takes you the rest of the way. The [install guide](https
 every step and every fix. You do not need Node, a toolchain, or this
 repository.
 
-You do still need at least one agent CLI on your machine. From 0.5.3 a missing CLI shows as a card
-in the agent's terminal: Install runs the command, you sign in inside the app, and the agent starts.
+You need GitHub Copilot CLI on your machine. A missing CLI shows as a card in the agent's terminal:
+Install runs the command, you sign in inside the app, and the agent starts.
 **Settings → Prerequisites** lists the rest.
 
 **Pro** adds Capabilities, agent files, Stapler and the new sidebar. As part of the launch it is free for everyone
@@ -434,12 +417,8 @@ Everything below is for contributors and for people who want to run an unrelease
   ```bash
   xcode-select --install
   ```
-- At least one supported agent CLI on your `PATH`, one of **[Claude Code](https://claude.com/claude-code)**
-  (`claude`, the default), **Antigravity** (`agy`), **OpenAI Codex** (`codex`), **xAI Grok** (`grok`),
-  **Kimi Code** (`kimi`), **Gemini CLI** (`gemini`), **Qwen** (`qwen`), **OpenCode** (`opencode`),
-  **Crush** (`crush`), **pi.dev** (`pi`), **GitHub Copilot** (`copilot`), or **Cursor** (`cursor-agent`).
-  Most missing CLIs self-heal: the harness runs the installer in the
-  terminal and continues into the new binary.
+- **[GitHub Copilot CLI](https://docs.github.com/copilot/concepts/agents/about-copilot-cli)** (`copilot`).
+  If it is missing, the app offers to install it in the agent terminal.
 - *Optional:* **your own API keys and local LLMs** in **Settings → AI Engines** (Ollama / LM Studio / vLLM).
 - *Optional:* the semantic memory index for instant cross-session recall. Markdown memory works without it.
 

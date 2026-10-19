@@ -3,9 +3,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import {
-  autoModeFlagForProvider,
-  defaultCommandForProvider,
-  inferAgentProvider,
+  AGENT_RUNTIME_PROVIDER,
   providerPreset,
   type AgentProvider
 } from '../shared/agentProvider';
@@ -426,13 +424,10 @@ const DEFAULTS: HarnessConfig = {
   registeredRepos: [],
   autoMode: true,
   orchestratorMaySpawn: false,
-  defaultCommand: 'claude',
-  godProvider: 'claude',
-  godModel: 'claude-opus-4-8',
-  // Global default model for every agent that hasn't picked one explicitly — wins
-  // over the role-based tiers (modelForRole) in the spawn handler, so all agents
-  // (incl. god) default to Fable 5. A per-agent model choice still overrides it.
-  defaultModel: 'claude-fable-5',
+  defaultCommand: 'copilot',
+  godProvider: 'copilot',
+  godModel: 'claude-sonnet-4.5',
+  defaultModel: 'claude-sonnet-4.5',
   // Seeded from the MCP catalog so the consent defaults never drift from it
   // (safe-readonly ON, write/secret OFF).
   mcpDefaults: defaultMcpDefaults(),
@@ -594,7 +589,9 @@ export function readConfig(): HarnessConfig {
   try {
     const raw = readFileSync(p, 'utf8');
     const parsed = JSON.parse(raw);
-    return normalizeStoredHomes(migrateTriggersV1(withTriggerDefaults({ ...DEFAULTS, ...parsed })));
+    return normalizeAgentRuntime(
+      normalizeStoredHomes(migrateTriggersV1(withTriggerDefaults({ ...DEFAULTS, ...parsed })))
+    );
   } catch {
     return withTriggerDefaults({ ...DEFAULTS });
   }
@@ -623,6 +620,20 @@ function normalizeStoredHomes(cfg: HarnessConfig): HarnessConfig {
   return cfg;
 }
 
+function normalizeAgentRuntime(cfg: HarnessConfig): HarnessConfig {
+  const engineChanged =
+    cfg.defaultCommand !== providerPreset(AGENT_RUNTIME_PROVIDER).defaultCommand ||
+    cfg.godProvider !== AGENT_RUNTIME_PROVIDER;
+  cfg.defaultCommand = providerPreset(AGENT_RUNTIME_PROVIDER).defaultCommand;
+  cfg.godProvider = AGENT_RUNTIME_PROVIDER;
+  if (engineChanged) {
+    const model = providerPreset(AGENT_RUNTIME_PROVIDER).recommendedOrchestratorModel;
+    cfg.defaultModel = model;
+    cfg.godModel = model;
+  }
+  return cfg;
+}
+
 /** Announces every saved setting, so a screen showing one can update.
  *
  *  Settings, Slack, voice and notifications each save by their own route, and
@@ -637,6 +648,7 @@ export function onConfigWritten(listener: ConfigWriteListener): () => void {
 }
 
 function persistConfig(next: HarnessConfig): HarnessConfig {
+  next = normalizeAgentRuntime({ ...next });
   const p = configPath();
   mkdirSync(dirname(p), { recursive: true });
   // Temp + rename: `rename` is atomic within a filesystem, so a crash mid-write
@@ -767,7 +779,7 @@ export function modelForRole(
   if (meta.isGod) {
     // GOD engine is selectable: an explicit godModel wins, else the chosen
     // provider's recommended orchestrator model, else the legacy Opus default.
-    const preset = providerPreset(config?.godProvider ?? 'claude');
+    const preset = providerPreset(config?.godProvider ?? AGENT_RUNTIME_PROVIDER);
     return config?.godModel ?? preset.recommendedOrchestratorModel ?? MODEL_GOD;
   }
   const hay = `${meta.role ?? ''} ${(meta.capabilities ?? []).join(' ')}`.toLowerCase();

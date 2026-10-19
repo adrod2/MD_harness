@@ -1,6 +1,12 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useStore, type Agent } from '@/store/store';
-import { buildSpawnCommand, inferAgentProvider, tokenizeCommand, type HarnessConfig } from '@/store/config';
+import {
+  AGENT_RUNTIME_PROVIDER,
+  buildSpawnCommand,
+  copilotModelForConfig,
+  tokenizeCommand,
+  type HarnessConfig
+} from '@/store/config';
 import { roleForHiveSpawn } from '@shared/agentRole';
 
 /** "Restore team" — respawn every worker from the previous session.
@@ -99,8 +105,9 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
         // abort the others — an unhandled rejection here used to make the
         // entire restore a silent no-op after the first bad agent.
         try {
-          const provider = inferAgentProvider(a.command, a.provider);
-          const command = (a.command ?? '').trim() || (config ? buildSpawnCommand(config, a.model, provider) : '');
+          const provider = AGENT_RUNTIME_PROVIDER;
+          const model = copilotModelForConfig(a.model);
+          const command = config ? buildSpawnCommand(config, model, provider) : 'copilot';
           if (!command || !a.cwd) {
             // No spawn recipe (an old entry persisted before `command`, with no
             // config to rebuild one). Keep it restorable and SAY why rather than
@@ -146,7 +153,7 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
             // agy --conversation) and for Claude reattaches the transcript. The
             // agent id is preserved across restart, so its registry entry,
             // memory.md and inbox reattach by id. No-op without a recorded session.
-            resume: true,
+            resume: a.provider === AGENT_RUNTIME_PROVIDER,
             hive: { id: a.id, name: a.name, provider, cwd, role: roleForHiveSpawn(a) }
           });
           if (res.ok) {
@@ -154,6 +161,8 @@ export function useRestoreTeam(config?: HarnessConfig | null): RestoreTeamState 
             return {
                 ...a,
                 provider,
+                model,
+                command,
                 ptyId,
                 archived: false,
                 status: 'idle',

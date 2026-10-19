@@ -1,6 +1,7 @@
 // Mirrors src/main/config.ts. Kept as a renderer-side type-only module
 // so we don't have to reach into the preload package to type-check.
 import {
+  AGENT_RUNTIME_PROVIDER,
   AGENT_PROVIDER_PRESETS,
   providerPreset,
   inferAgentProvider,
@@ -18,6 +19,7 @@ import modelCatalog from '@shared/modelCatalog.json';
 import type { CatalogModel, ModelCatalog } from '@shared/modelCatalogPayload';
 
 export {
+  AGENT_RUNTIME_PROVIDER,
   AGENT_PROVIDER_PRESETS,
   providerPreset,
   inferAgentProvider,
@@ -344,6 +346,14 @@ export function modelsForProvider(provider: AgentProvider): ModelOption[] {
   return modelsForProviderAtVersion(provider, runningAppVersion());
 }
 
+/** A persisted model from another engine is not a valid Copilot model. */
+export function copilotModelForConfig(model?: string): string | undefined {
+  if (model && modelsForProvider(AGENT_RUNTIME_PROVIDER).some((candidate) => candidate.id === model)) {
+    return model;
+  }
+  return providerPreset(AGENT_RUNTIME_PROVIDER).recommendedOrchestratorModel;
+}
+
 /** The Claude presets, for the surfaces that only ever offer Claude models.
  *  A FUNCTION, not a const array: a const would be captured at module load and
  *  would still be showing the baked list after a remote refresh landed. */
@@ -351,32 +361,19 @@ export function agentModels(): ModelOption[] {
   return modelsForProvider('claude');
 }
 
-/** Providers shown in the Command Center's cross-provider model picker.
- *  God must remain on a provider with a working inbox drain; otherwise switching
- *  to a terminal-only provider would silently disable orchestration. */
+/** Providers available for agent model selection. Runtime policy pins this to
+ *  Copilot while legacy provider metadata is migrated. */
 export function modelProvidersForAgent(isGod = false) {
-  return AGENT_PROVIDER_PRESETS.filter((preset) =>
-    preset.supportsModel && (!isGod || preset.canReceiveInbox)
-  );
+  void isGod;
+  return AGENT_PROVIDER_PRESETS.filter((preset) => preset.id === AGENT_RUNTIME_PROVIDER);
 }
 
-/** The onboarding engine step's two groups (issue #355). Hiding inbox-less
- *  engines there read as "Copilot isn't supported at all", when the truth is
- *  narrower: a print-mode / bridge-less CLI can be HIRED as a worker but cannot
- *  run Michael, because the orchestrator must drain hive mail. So the step now
- *  shows those engines too, as disabled workers-only rows — same god-eligible
- *  set as `modelProvidersForAgent(true)` for the selectable group, and every
- *  other preset except `custom` (bring-your-own command, not an engine) in the
- *  disabled group. */
+/** The onboarding engine step exposes the single supported runtime. */
 export function onboardingEngineChoices(): {
   eligible: AgentProviderPreset[];
   workersOnly: AgentProviderPreset[];
 } {
-  const eligible = modelProvidersForAgent(true);
-  const workersOnly = AGENT_PROVIDER_PRESETS.filter(
-    (preset) => preset.id !== 'custom' && !eligible.includes(preset)
-  );
-  return { eligible, workersOnly };
+  return { eligible: modelProvidersForAgent(true), workersOnly: [] };
 }
 
 /** Native <select> values must carry both provider and model because each
@@ -408,23 +405,18 @@ export function decodeProviderModel(value: string): {
 export function buildSpawnCommand(
   config: Pick<HarnessConfig, 'defaultCommand' | 'autoMode'>,
   model?: string,
-  provider: AgentProvider = inferAgentProvider(config.defaultCommand)
+  _provider: AgentProvider = inferAgentProvider(config.defaultCommand)
 ): string {
+  const provider = AGENT_RUNTIME_PROVIDER;
   const preset = providerPreset(provider);
-  // Claude keeps the user's configured defaultCommand; custom falls back to it
-  // too; every other provider (codex, grok, kimi, agy) uses its preset binary so the app
-  // works even without Claude installed.
-  const base =
-    provider === 'claude'
-      ? config.defaultCommand || preset.defaultCommand
-      : provider === 'custom'
-        ? config.defaultCommand || ''
-        : preset.defaultCommand;
+  const base = preset.defaultCommand;
   let cmd = base;
-  if (preset.supportsModel && model && preset.modelFlag) {
+  const supportedModel = modelsForProvider(provider).some((candidate) => candidate.id === model);
+  const selectedModel = model && !supportedModel ? copilotModelForConfig() : model;
+  if (preset.supportsModel && selectedModel && preset.modelFlag) {
     // Quote model values that contain whitespace (agy labels like
     // "Gemini 3.1 Pro (High)") so the command tokenizer keeps them one arg.
-    const m = /\s/.test(model) ? `"${model}"` : model;
+    const m = /\s/.test(selectedModel) ? `"${selectedModel}"` : selectedModel;
     cmd = `${cmd} ${preset.modelFlag} ${m}`;
   }
   // Auto (skip-permissions) mode appends each provider's own flag — Claude's

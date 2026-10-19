@@ -90,26 +90,30 @@ test('every non-hive-aware inbox provider declares exactly one bootstrap deliver
   }
 });
 
-test('provider commands use matching models and equivalent bypass modes', () => {
+test('every provider selection builds a Copilot CLI command', () => {
   assert.equal(
     buildSpawnCommand(autoConfig, 'claude-sonnet-5', 'claude'),
-    'claude --model claude-sonnet-5 --permission-mode bypassPermissions'
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'gpt-5.6-sol', 'codex'),
-    'codex --model gpt-5.6-sol -a never -s workspace-write'
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'grok-4.5', 'grok'),
-    'grok --model grok-4.5 --permission-mode bypassPermissions'
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'kimi-code/k3', 'kimi'),
-    'kimi --model kimi-code/k3 --auto'
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
   );
   assert.equal(
     buildSpawnCommand(autoConfig, 'pro', 'gemini'),
-    'gemini --model pro --approval-mode=yolo'
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
+  );
+  assert.equal(
+    buildSpawnCommand(autoConfig, 'gpt-5.4', 'copilot'),
+    'copilot --model gpt-5.4 --allow-all-tools --no-ask-user'
   );
 });
 
@@ -164,32 +168,24 @@ test('Command Center model choices round-trip provider and model', () => {
   assert.equal(decodeProviderModel('unknown:model'), null);
 });
 
-test('onboarding lists every engine — orchestrator-capable first, workers-only after, custom never', () => {
-  // Issue #355: hiding Copilot from the onboarding engine step read as "not
-  // supported at all". The step now SHOWS inbox-less engines as disabled
-  // workers-only rows instead of omitting them, so the split must be exact:
-  // selectable = the god-eligible set, workersOnly = everything a worker can
-  // run but Michael cannot (custom stays hidden — it is not a preset engine).
+test('onboarding offers only the enforced Copilot CLI runtime', () => {
   const { eligible, workersOnly } = onboardingEngineChoices();
   assert.deepEqual(
     eligible.map((preset) => preset.id),
     modelProvidersForAgent(true).map((preset) => preset.id),
-    'selectable rows are exactly the god-eligible engines, same order'
+    'selectable rows are exactly the runtime engine'
   );
-  assert.deepEqual(workersOnly.map((preset) => preset.id), ['kimi', 'copilot']);
+  assert.deepEqual(workersOnly.map((preset) => preset.id), []);
   assert.ok(!eligible.concat(workersOnly).some((preset) => preset.id === 'custom'));
 });
 
-test('God only sees providers that can drain hive inbox messages', () => {
-  // God-eligible = supportsModel && canReceiveInbox: kimi and copilot are
-  // excluded (no inbox drain path), custom is excluded (no model picker).
-  // Cursor is interactive (no -p) so it IS god-eligible.
+test('all agent engine pickers are pinned to Copilot CLI', () => {
   assert.deepEqual(
     modelProvidersForAgent(true).map((preset) => preset.id),
-    ['claude', 'codex', 'grok', 'gemini', 'antigravity', 'qwen', 'opencode', 'crush', 'pi', 'cursor']
+    ['copilot']
   );
   assert.deepEqual(
     modelProvidersForAgent(false).map((preset) => preset.id),
-    ['claude', 'codex', 'grok', 'kimi', 'gemini', 'antigravity', 'qwen', 'opencode', 'crush', 'pi', 'copilot', 'cursor']
+    ['copilot']
   );
 });

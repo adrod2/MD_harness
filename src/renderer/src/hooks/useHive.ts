@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useStore, type Agent, type QueuedMessage, type StationKind, type ToolKind } from '@/store/store';
 import {
   buildSpawnCommand,
+  copilotModelForConfig,
   ASSISTANT_MODEL,
   inferAgentProvider,
   isClaudeProvider,
@@ -321,7 +322,7 @@ export function useHive(config: HarnessConfig | null): void {
   // must leave the agent alone — set while its boot sequence is typing so nothing
   // collides with /remote-control + the orientation prompt.
   const bootGraceUntil = useRef<Record<string, number>>({});
-  // Agents whose one-time TUI protocol seed (Crush, seedDelivery:'type-into-tui')
+  // Agents whose one-time TUI protocol seed (Crush, Copilot)
   // has already been typed — guards effect #3b against re-seeding. (ondev-b)
   const seeded = useRef<Set<string>>(new Set());
   const seenTerminalHandoffs = useRef<Set<string>>(new Set());
@@ -396,8 +397,8 @@ export function useHive(config: HarnessConfig | null): void {
       const reg = await window.cth.hiveRegistry().catch(() => null);
       const godName = resolveGodName(reg?.agents?.[GOD_ID]?.name);
 
-      const godProvider = config.godProvider ?? 'claude';
-      const godModel = config.godModel;
+      const godProvider = 'copilot' as const;
+      const godModel = copilotModelForConfig(config.godModel);
       const command = buildSpawnCommand(config, godModel, godProvider);
       const [exe, ...args] = tokenizeCommand(command.trim());
       const res = await window.cth.spawnPty({
@@ -413,7 +414,7 @@ export function useHive(config: HarnessConfig | null): void {
         // process attaches `--resume <id>`; a missing transcript falls back to a
         // fresh session. Without this the most important context on the floor —
         // the orchestrator's — was lost on every restart.
-        resume: true,
+        resume: config.godProvider === 'copilot',
         hive: { id: GOD_ID, name: godName, provider: godProvider, cwd: config.harnessHome!, isGod: true, role: 'orchestrator (god)' }
       });
       if (cancelled) { godSpawning.current = false; return; }
@@ -1046,6 +1047,7 @@ export function useHive(config: HarnessConfig | null): void {
         ptyId: rec.id,
         command: rec.command,
         provider: rec.provider as Agent['provider'],
+        seedPrompt: rec.seedPrompt,
         isGod: false,
         recentTextTs: Date.now()
       };

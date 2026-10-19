@@ -5,8 +5,8 @@
  * registry lives in TypeScript (src/shared/agentProvider.ts), so we transpile it
  * and its two dependency-free command-group siblings with the bundled `typescript`
  * compiler into a temp dir and require the result. Exercises the copilot preset
- * (GitHub Copilot CLI) end to end: registration, command inference, the print-mode
- * flag shape, and the model/resume passthrough — alongside the pre-existing codex
+ * (GitHub Copilot CLI) end to end: registration, command inference, the interactive
+ * TUI seed mode, and the model/resume passthrough — alongside the pre-existing codex
  * preset as a guard against regressions.
  */
 
@@ -45,20 +45,21 @@ test('inferAgentProvider maps the copilot binary (with path/flags) to copilot', 
   assert.strictEqual(ap.inferAgentProvider('/usr/local/bin/copilot --model gpt-5.4'), 'copilot');
 });
 
-test('copilot preset builds the documented non-interactive print-mode shape', () => {
+test('copilot preset builds an interactive, unattended TUI agent', () => {
   const p = ap.providerPreset('copilot');
   assert.strictEqual(p.defaultCommand, 'copilot', 'default command binary');
-  assert.strictEqual(p.initialPromptFlag, '-p', 'prompt rides in via -p');
-  assert.strictEqual(ap.autoModeFlagForProvider('copilot'), '-s --allow-all-tools --no-ask-user');
-  assert.strictEqual(p.autoFlag, '-s --allow-all-tools --no-ask-user', 'autoFlag mirrors autoModeFlag');
+  assert.strictEqual(p.initialPromptFlag, undefined, 'interactive mode does not use -p');
+  assert.strictEqual(p.seedDelivery, 'type-into-tui');
+  assert.strictEqual(ap.autoModeFlagForProvider('copilot'), '--allow-all-tools --no-ask-user');
+  assert.strictEqual(p.autoFlag, '--allow-all-tools --no-ask-user', 'autoFlag mirrors autoModeFlag');
 });
 
-test('copilot passes model + resume through, non-hiveAware, never auto-receives inbox', () => {
+test('copilot passes model + resume through, is non-hiveAware, and receives routed inbox messages', () => {
   const p = ap.providerPreset('copilot');
   assert.ok(p.supportsModel && p.modelFlag === '--model', 'model picker + --model');
   assert.strictEqual(p.resumeFlag, '--resume', 'session resume flag');
   assert.strictEqual(p.hiveAware, false, 'no Claude-only identity injection');
-  assert.strictEqual(ap.canReceiveInbox('copilot'), false, 'print mode exits, no drain → bounces');
+  assert.strictEqual(ap.canReceiveInbox('copilot'), true, 'interactive TUI can receive routed inbox messages');
   assert.strictEqual(ap.bridgeOf('copilot'), undefined, 'no hook/proxy bridge');
 });
 

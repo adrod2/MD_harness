@@ -104,7 +104,7 @@ export interface Agent {
    *  kept off the floor; only live-PTY agents are 'active'. */
   archived?: boolean;
   /** Hive protocol to TYPE into this agent's TUI as its first turn, set at spawn
-   *  for `seedDelivery:'type-into-tui'` providers (Crush) whose bare TUI rejects a
+   *  for `seedDelivery:'type-into-tui'` providers (Crush, Copilot) whose bare TUI rejects a
    *  positional seed. useHive types it once after boot-grace then clears it.
    *  Ephemeral spawn state — not persisted. (ondev-b) */
   seedPrompt?: string;

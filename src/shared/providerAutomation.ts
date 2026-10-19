@@ -131,11 +131,9 @@ const CONTEXT_COMMANDS: Record<AgentProvider, ProviderContextCommands> = {
   // where optional instructions focus the summary". There is no `/clear`.
   pi: { compact: '/compact', clear: '/new', compactTakesFocus: true },
 
-  // Copilot's INTERACTIVE mode does have `/compact [FOCUS-INSTRUCTIONS]` and
-  // `/clear` — but this app never runs it interactively. The preset spawns it in
-  // print mode (`initialPromptFlag: '-p'`, `canReceiveInbox: false`), which runs
-  // one prompt and EXITS. There is no prompt left alive to type a slash command
-  // into, so both are null by construction rather than by ignorance.
+  // Copilot's interactive mode does have `/compact [FOCUS-INSTRUCTIONS]` and
+  // `/clear`, but these commands are not yet verified against the supported CLI
+  // version. Leave them disabled rather than risk typing an invalid command.
   copilot: NO_CONTEXT_COMMANDS,
 
   // Cursor Agent CLI (`agent`) is interactive in this preset, but its slash /

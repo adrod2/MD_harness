@@ -1,14 +1,12 @@
 /**
- * How a god-hired worker's spawn request becomes an executable + argv, as a
- * pure function: this exact translation silently killed real workers for days
- * while reporting success, which is what earned it a unit test.
+ * How a god-hired worker's spawn request becomes a Copilot CLI executable +
+ * argv, as a pure function.
  */
 import {
+  AGENT_RUNTIME_PROVIDER,
   autoModeFlagForProvider,
-  defaultCommandForProvider,
   hasAutoModeStance,
-  inferAgentProvider,
-  normalizeAgentProvider
+  inferAgentProvider
 } from '../shared/agentProvider';
 import { tokenizeCommand } from '../shared/commandLine';
 
@@ -21,6 +19,28 @@ export interface WorkerLaunch {
   command: string;
 }
 
+/** Drop arguments from a previously configured provider before launching Copilot.
+ *  Only the Copilot model, permission, and compatible session flags are retained. */
+export function copilotRuntimeArgs(args: string[] | undefined, preserveCopilotOptions: boolean): string[] {
+  const safe: string[] = [];
+  for (let i = 0; i < (args?.length ?? 0); i++) {
+    const arg = args?.[i] ?? '';
+    const next = args?.[i + 1];
+    if (preserveCopilotOptions && arg === '--model' && next) {
+      safe.push(arg, next);
+      i++;
+    } else if (preserveCopilotOptions && arg === '--resume' && next) {
+      safe.push(arg, next);
+      i++;
+    } else if (preserveCopilotOptions && arg.startsWith('--resume=')) {
+      safe.push(arg);
+    } else if (arg === '--allow-all-tools' || arg === '--no-ask-user') {
+      safe.push(arg);
+    }
+  }
+  return safe;
+}
+
 export function buildWorkerLaunch(opts: {
   /** `command` from the spawn request — god authors a full command LINE. */
   requestCommand?: unknown;
@@ -31,47 +51,47 @@ export function buildWorkerLaunch(opts: {
   /** The app's auto (skip-permissions) setting. */
   autoMode: boolean;
 }): WorkerLaunch {
-  const requestCommand =
+  const requestProvider = inferAgentProvider(
+    typeof opts.requestCommand === 'string' ? opts.requestCommand : undefined,
+    opts.requestProvider
+  );
+  const provider = AGENT_RUNTIME_PROVIDER;
+  const requestedCommand =
     typeof opts.requestCommand === 'string' && opts.requestCommand.trim()
       ? opts.requestCommand.trim()
       : '';
-  const requestProvider = normalizeAgentProvider(opts.requestProvider);
-  const fallbackCommand = opts.defaultCommand ?? 'claude';
-  // An explicit command may be a wrapper or shim and remains authoritative.
-  // Without one, keep the executable and provider behavior coherent by taking
-  // the provider's canonical command before the configured legacy fallback.
-  let command =
-    requestCommand ||
-    (requestProvider ? defaultCommandForProvider(requestProvider, fallbackCommand) : fallbackCommand);
-  // Inherit the app's auto (skip-permissions) mode when the request takes no
-  // stance of its own: a headless worker has no human to click through tool
-  // prompts, so without the flag it stalls at the first ask until the idle
-  // reaper kills it. The flag is the PROVIDER'S — a codex worker needs
-  // `-a never -s workspace-write`, and claude's --permission-mode
-  // would mean nothing to it (an earlier hardcoded-claude version left every
-  // non-claude worker stalling; review caught it). An explicit stance in the
-  // request still wins: the flag's leading token already present as a TOKEN
-  // (not substring — copilot's flag starts with `-s`) means the request chose.
-  const provider = inferAgentProvider(command, requestProvider);
+  const requestedTokens = requestedCommand ? tokenizeCommand(requestedCommand) : [];
+  const preserveCopilotOptions = requestProvider === provider;
+  let command = provider;
+  // Inherit the app's auto mode: headless workers have no human to approve
+  // tool use. Discard non-Copilot flags rather than passing invalid options.
   const autoFlag = opts.autoMode ? autoModeFlagForProvider(provider) : '';
-  if (autoFlag && !hasAutoModeStance(tokenizeCommand(command), provider)) {
+  if (autoFlag && !hasAutoModeStance(preserveCopilotOptions ? requestedTokens : tokenizeCommand(command), provider)) {
     command += ` ${autoFlag}`;
   }
-  // god authors `command` as a full command LINE ("claude --model … --permission-mode …"),
-  // but the PTY layer takes ONE executable name (resolveCommand) plus argv — the
-  // unsplit line made node-pty exec a binary literally named like the whole
-  // string → ENOENT → the worker died within ~1s of spawning while its request
-  // archived as .done (this killed both flag-carrying Ryan spawns on 2026-08-16;
-  // only the bare-`claude` one lived). Split with the SAME tokenizer the
-  // renderer's spawn flows use, and hand the flags over as argv.
-  const tokens = tokenizeCommand(command);
-  const bin = tokens[0] || command;
-  const flags = tokens.slice(1);
+  // Copilot is always the executable; the shared tokenizer lets a Copilot
+  // command retain supported options without forwarding a provider binary.
+  const flags = [
+    ...(preserveCopilotOptions ? requestedTokens.slice(1) : []),
+    ...tokenizeCommand(command).slice(1)
+  ];
   // A separate `model` field only applies when the command line didn't pick a
   // model itself (spawnAgentCore likewise skips its default-model injection
   // when argv already carries --model).
   const model =
-    typeof opts.requestModel === 'string' && opts.requestModel.trim() ? opts.requestModel.trim() : '';
-  const args = [...flags, ...(model && !flags.includes('--model') ? ['--model', model] : [])];
-  return { bin, args, command };
+    requestProvider === provider &&
+    typeof opts.requestModel === 'string' &&
+    opts.requestModel.trim()
+      ? opts.requestModel.trim()
+      : '';
+  const args = copilotRuntimeArgs(
+    [...flags, ...(model && !flags.includes('--model') ? ['--model', model] : [])],
+    preserveCopilotOptions
+  );
+  const tokens = tokenizeCommand(command);
+  const bin = tokens[0] || command;
+  const displayCommand = [bin, ...args]
+    .map((arg) => (/\s/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg))
+    .join(' ');
+  return { bin, args, command: displayCommand };
 }

@@ -31,10 +31,8 @@ import {
   modelsForProvider,
   providerPreset,
   tokenizeCommand,
-  AGENT_PROVIDER_PRESETS,
   type AgentProvider
 } from '@/store/config';
-import { canReceiveInbox } from '@shared/agentProvider';
 import { isComposingKey } from '@shared/imeGuard';
 import { useRtl } from '@/i18n/useDirection';
 
@@ -884,13 +882,13 @@ function FloorTab({ seed }: { seed: { text: string; seq: number } }) {
                   onChange={(v) => {
                     const p = v as AgentProvider;
                     setEngineProvider(p);
-                    const preset = AGENT_PROVIDER_PRESETS.find((x) => x.id === p);
+                    const preset = modelProvidersForAgent(true).find((x) => x.id === p);
                     setEngineModel(preset?.recommendedOrchestratorModel);
                   }}
                 >
-                  {AGENT_PROVIDER_PRESETS.filter((p) => canReceiveInbox(p.id)).map((p) => (
+                  {modelProvidersForAgent(true).map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.label}{p.id === 'claude' ? ' ★' : ''}
+                      {p.label}
                     </option>
                   ))}
                 </Select>

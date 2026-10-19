@@ -7,12 +7,13 @@ import { useStore, type Agent } from '@/store/store';
 import { OFFICE_CAST, type OfficeCharacterName } from '@/scene/office/cast';
 import { type AccentColorName } from '@/design/tokens';
 import {
+  AGENT_RUNTIME_PROVIDER,
+  copilotModelForConfig,
   type AgentProvider,
   type HarnessConfig,
   AGENT_PROVIDER_PRESETS,
   buildSpawnCommand,
   modelsForProvider,
-  inferAgentProvider,
   providerPreset,
   isClaudeProvider
 } from '@/store/config';
@@ -36,10 +37,10 @@ export function EditAgentModal({ agent, onClose }: EditAgentModalProps) {
   const [name, setName] = useState(agent.name);
   const [character, setCharacter] = useState<OfficeCharacterName>(agent.character);
   const [accent, setAccent] = useState<AccentColorName>(agent.accent);
-  const [provider, setProvider] = useState<AgentProvider>(
-    inferAgentProvider(agent.command, agent.provider)
+  const [provider, setProvider] = useState<AgentProvider>(AGENT_RUNTIME_PROVIDER);
+  const [model, setModel] = useState<string | undefined>(
+    providerPreset(AGENT_RUNTIME_PROVIDER).recommendedOrchestratorModel
   );
-  const [model, setModel] = useState<string | undefined>(agent.model);
   const [description, setDescription] = useState(agent.description);
   const [goal, setGoal] = useState(agent.goal ?? '');
 
@@ -52,8 +53,8 @@ export function EditAgentModal({ agent, onClose }: EditAgentModalProps) {
     setName(agent.name);
     setCharacter(agent.character);
     setAccent(agent.accent);
-    setProvider(inferAgentProvider(agent.command, agent.provider));
-    setModel(agent.model);
+    setProvider(AGENT_RUNTIME_PROVIDER);
+    setModel(providerPreset(AGENT_RUNTIME_PROVIDER).recommendedOrchestratorModel);
     setDescription(agent.description);
     setGoal(agent.goal ?? '');
   }, [agent.id]);
@@ -64,11 +65,11 @@ export function EditAgentModal({ agent, onClose }: EditAgentModalProps) {
       setModel(undefined);
       return;
     }
-    const nextModel = isClaudeProvider(id) ? config.defaultModel : config.providerDefaultModels?.[id];
+    const nextModel = copilotModelForConfig(config.providerDefaultModels?.[AGENT_RUNTIME_PROVIDER]);
     setModel(nextModel);
   };
 
-  const preset = providerPreset(provider);
+  const preset = providerPreset(AGENT_RUNTIME_PROVIDER);
 
   const save = () => {
     const trimmedName = name.trim() || agent.name;
@@ -76,7 +77,7 @@ export function EditAgentModal({ agent, onClose }: EditAgentModalProps) {
     const trimmedGoal = goal.trim();
     const command = config
       ? buildSpawnCommand(config, model, provider)
-      : agent.command;
+      : 'copilot';
 
     updateAgent(agent.id, {
       name: trimmedName,
@@ -189,7 +190,7 @@ export function EditAgentModal({ agent, onClose }: EditAgentModalProps) {
             <Section label="Engine" hint="provider · model · next restart">
               <Row label="Provider">
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {AGENT_PROVIDER_PRESETS.map((p) => {
+                  {AGENT_PROVIDER_PRESETS.filter((p) => p.id === AGENT_RUNTIME_PROVIDER).map((p) => {
                     const active = provider === p.id;
                     return (
                       <button
