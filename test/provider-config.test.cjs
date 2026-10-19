@@ -1,0 +1,191 @@
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const loadTs = require('./load-ts.cjs');
+
+const {
+  AGENT_PROVIDER_PRESETS,
+  inferAgentProvider,
+  isAgentProvider,
+  providerPreset
+} = loadTs('src/shared/agentProvider.ts');
+const {
+  buildSpawnCommand,
+  decodeProviderModel,
+  encodeProviderModel,
+  modelProvidersForAgent,
+  modelsForProvider,
+  onboardingEngineChoices
+} = loadTs('src/renderer/src/store/config.ts');
+
+const autoConfig = { defaultCommand: 'claude', autoMode: true };
+
+test('Kimi is a first-class inferred provider with autonomous defaults', () => {
+  assert.equal(isAgentProvider('kimi'), true);
+  assert.equal(inferAgentProvider('kimi --auto'), 'kimi');
+  const preset = providerPreset('kimi');
+  assert.equal(preset.defaultCommand, 'kimi');
+  assert.equal(preset.autoFlag, '--auto');
+  assert.equal(preset.supportsModel, true);
+  assert.equal(preset.canReceiveInbox, false);
+  assert.equal(preset.positionalInitialPrompt, undefined);
+});
+
+test('Gemini CLI has hooks, interactive seeding, resume, and current yolo mode', () => {
+  assert.equal(isAgentProvider('gemini'), true);
+  assert.equal(inferAgentProvider('/usr/local/bin/gemini --model pro'), 'gemini');
+  const preset = providerPreset('gemini');
+  assert.equal(preset.defaultCommand, 'gemini');
+  assert.equal(preset.autoFlag, '--approval-mode=yolo');
+  assert.equal(preset.supportsModel, true);
+  assert.equal(preset.canReceiveInbox, true);
+  assert.deepEqual(preset.bridge, { kind: 'hooks', shim: 'gemini' });
+  assert.equal(preset.initialPromptFlag, '-i');
+  assert.equal(preset.resumeFlag, '--resume');
+  assert.equal(preset.installCommand, 'npm install -g @google/gemini-cli');
+});
+
+test('Grok is a first-class inferred provider with hooks, resume, and always-approve', () => {
+  assert.equal(isAgentProvider('grok'), true);
+  assert.equal(inferAgentProvider('/Users/test/.local/bin/grok --model grok-4.5'), 'grok');
+  const preset = providerPreset('grok');
+  assert.equal(preset.defaultCommand, 'grok');
+  assert.equal(preset.autoFlag, '--permission-mode bypassPermissions');
+  assert.equal(preset.supportsModel, true);
+  assert.equal(preset.canReceiveInbox, true);
+  assert.equal(preset.hookBridge, 'grok');
+  assert.equal(preset.positionalInitialPrompt, true);
+  assert.equal(preset.resumeFlag, '--resume');
+});
+
+test('Pi is a first-class inferred provider with hooks, positional bootstrap, and resume', () => {
+  assert.equal(isAgentProvider('pi'), true);
+  assert.equal(inferAgentProvider('pi --model anthropic/claude-sonnet-4-5'), 'pi');
+
+  const preset = providerPreset('pi');
+  assert.equal(preset.defaultCommand, 'pi');
+  assert.equal(preset.canReceiveInbox, true);
+  assert.deepEqual(preset.bridge, { kind: 'hooks', shim: 'pi' });
+  assert.equal(preset.initialPromptFlag, undefined);
+  assert.equal(preset.positionalInitialPrompt, true);
+  assert.equal(preset.resumeFlag, '--session');
+});
+
+test('every non-hive-aware inbox provider declares exactly one bootstrap delivery path', () => {
+  for (const preset of AGENT_PROVIDER_PRESETS) {
+    if (preset.hiveAware || !preset.canReceiveInbox) continue;
+
+    const deliveries = [
+      typeof preset.initialPromptFlag === 'string' && preset.initialPromptFlag.length > 0,
+      preset.positionalInitialPrompt === true,
+      preset.seedDelivery !== undefined
+    ].filter(Boolean).length;
+
+    assert.equal(
+      deliveries,
+      1,
+      `${preset.id} can receive hive inbox but declares ${deliveries} bootstrap delivery paths`
+    );
+  }
+});
+
+test('every provider selection builds a Copilot CLI command', () => {
+  assert.equal(
+    buildSpawnCommand(autoConfig, 'claude-sonnet-5', 'claude'),
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
+  );
+  assert.equal(
+    buildSpawnCommand(autoConfig, 'gpt-5.6-sol', 'codex'),
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
+  );
+  assert.equal(
+    buildSpawnCommand(autoConfig, 'grok-4.5', 'grok'),
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
+  );
+  assert.equal(
+    buildSpawnCommand(autoConfig, 'kimi-code/k3', 'kimi'),
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
+  );
+  assert.equal(
+    buildSpawnCommand(autoConfig, 'pro', 'gemini'),
+    'copilot --model claude-sonnet-4.5 --allow-all-tools --no-ask-user'
+  );
+  assert.equal(
+    buildSpawnCommand(autoConfig, 'gpt-5.4', 'copilot'),
+    'copilot --model gpt-5.4 --allow-all-tools --no-ask-user'
+  );
+});
+
+test('model picker options stay provider-specific', () => {
+  assert.equal(
+    modelsForProvider('claude').find((model) => model.id === 'claude-opus-5')?.label,
+    'Opus 5 · 1M'
+  );
+  assert.deepEqual(
+    modelsForProvider('codex').map((model) => model.id),
+    [
+      undefined,
+      'gpt-6-astra',
+      'gpt-6-sol',
+      'gpt-5.6-sol',
+      'gpt-6-terra',
+      'gpt-5.6-terra',
+      'gpt-6-luna',
+      'gpt-5.6-luna'
+    ]
+  );
+  assert.deepEqual(
+    modelsForProvider('grok').map((model) => model.id),
+    [undefined, 'grok-4.6', 'grok-4.5']
+  );
+  assert.deepEqual(
+    modelsForProvider('kimi').map((model) => model.id),
+    [
+      undefined,
+      'kimi-code/k3',
+      'kimi-code/kimi-for-coding',
+      'kimi-code/kimi-for-coding-highspeed'
+    ]
+  );
+  assert.deepEqual(
+    modelsForProvider('gemini').map((model) => model.id),
+    [undefined, 'auto', 'pro', 'flash', 'flash-lite']
+  );
+  assert.deepEqual(modelsForProvider('custom'), []);
+});
+
+test('Command Center model choices round-trip provider and model', () => {
+  const encoded = encodeProviderModel('antigravity', 'Gemini 3.1 Pro (High)');
+  assert.deepEqual(
+    decodeProviderModel(encoded),
+    { provider: 'antigravity', model: 'Gemini 3.1 Pro (High)' }
+  );
+  assert.deepEqual(
+    decodeProviderModel(encodeProviderModel('kimi')),
+    { provider: 'kimi', model: undefined }
+  );
+  assert.equal(decodeProviderModel('unknown:model'), null);
+});
+
+test('onboarding offers only the enforced Copilot CLI runtime', () => {
+  const { eligible, workersOnly } = onboardingEngineChoices();
+  assert.deepEqual(
+    eligible.map((preset) => preset.id),
+    modelProvidersForAgent(true).map((preset) => preset.id),
+    'selectable rows are exactly the runtime engine'
+  );
+  assert.deepEqual(workersOnly.map((preset) => preset.id), []);
+  assert.ok(!eligible.concat(workersOnly).some((preset) => preset.id === 'custom'));
+});
+
+test('all agent engine pickers are pinned to Copilot CLI', () => {
+  assert.deepEqual(
+    modelProvidersForAgent(true).map((preset) => preset.id),
+    ['copilot']
+  );
+  assert.deepEqual(
+    modelProvidersForAgent(false).map((preset) => preset.id),
+    ['copilot']
+  );
+});
